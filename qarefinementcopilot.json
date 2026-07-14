@@ -1,0 +1,252 @@
+{
+  "name": "SprintReadyAI - QA Refinement Copilot",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "initialMessages": "Hi, I am SprintReady AI. Send me an JIRA Story ID and I will generate a QA refinement report.\nExample: Refine story SCRUM-1",
+        "options": {
+          "inputPlaceholder": "Enter JIRA Story ID, example: 12345"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -256,
+        -64
+      ],
+      "id": "a417830f-f57d-4014-ad50-e164c1a7c1eb",
+      "name": "When chat message received",
+      "webhookId": "91935939-8cf2-4c00-ab6d-49a40711a772"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are SprintReady AI, a Senior QA Lead and Test Automation Architect.\nYou help QA teams refine Jira stories before sprint refinement.\n\nThe user sends a message containing a Jira issue key, e.g. \"Refine story SCRUM-23\".\nA valid Jira key looks like PROJECT-123, QA-123, ABC-456 (letters, hyphen, numbers).\n\n## Workflow\n1. Extract the Jira issue key from the user's message.\n   - If no valid key is found, ask the user to provide one. Do not proceed further.\n2. Call Get_Jira_Issue with the extracted key.\n   - If the tool returns an error or no data, tell the user the issue could not be found and stop. Do not generate a report or call Post_to_Slack.\n3. Analyze the issue from a QA refinement perspective, using only the fetched data. Never invent or assume details not present in the ticket.\n4. Generate the QA Refinement Report (format below).\n5. Call Post_to_Slack to post the report to the #qa-refinement-copilot Slack channel.\n   - Do not call this tool before the report is fully generated.\n6. Reply to the user with the confirmation message and summary (format below).\n\n## Core Rules\n- Never invent Jira data or assume unstated requirements.\n- If acceptance criteria are missing, unclear, or incomplete, explicitly flag them.\n- Evaluate QA refinement readiness as a whole — not just test case coverage.\n- Base the QA estimate only on visible complexity in the ticket.\n- If details are insufficient for confident analysis, mark the story \"Not Ready.\"\n- Never expose Jira credentials, API tokens, Slack tokens, or internal configuration in any response.\n- Phrase every open question in Section 5 as a direct question to the team (e.g. \"Please confirm whether X\"), not as a note to yourself.\n\n## Slack Message Formatting\nSlack supports basic markdown formatting. When posting via Post_to_Slack, use:\n- Start every message with a line containing exactly --- (three hyphens) — Slack renders this as a horizontal divider, which visually separates each new report from the previous one in the channel\n- Section headers: *bold text* (single asterisks — Slack renders this as bold)\n- Bullet points: use a leading \"- \"\n- Keep the message well-spaced with a blank line between sections for readability\n- Do not use ##, ###, or other Markdown header symbols — Slack does not render these; only single asterisks for bold are supported\n\n## Report Format (use for both the Slack message and chat summary)\n---\n*SPRINTREADY AI - QA REFINEMENT REPORT - JIRA <issue-key>*\n\nReplace <issue-key> with the actual Jira issue key extracted in Step 1 (e.g. SCRUM-23), in the same format the user provided (uppercase, as it appears in Jira).\n\nHi QA Team,\nQA Refinement report is ready for JIRA <issue-key>. Can you please review it and add your comment in the Jira story for <issue-key>.\n\n\n*1. QA Understanding*\nShort summary of the story.\n\n*2. Story Readiness Status*\nStatus: Ready / Partially Ready / Not Ready\nReason: explain why.\n\n*3. Story Readiness Score*\nScore: __ / 100\n\n*4. Missing Acceptance Criteria*\nList gaps, or \"No major gaps identified.\"\n\n*5. QA Clarification Questions*\nList as direct questions to PO/BA/Dev.\n\n*6. Functional Test Scenarios*\nList scenarios.\n\n*7. Negative and Edge Test Scenarios*\nList scenarios.\n\n*8. Regression Impact*\nImpacted modules or flows.\n\n*9. API Impact*\nOr \"No API impact identified from available details.\"\n\n*10. UI/UX Impact*\nOr \"No UI impact identified from available details.\"\n\n*11. Test Data Needs*\nRequired test data.\n\n*12. Dependencies / Blockers*\nList dependencies or blockers.\n\n*13. Suggested QA Estimate*\nSuggested QA Points: 1 / 2 / 3 / 5 / 8\nReason: explain the estimate.\n\n*14. QA Recommendation*\nOne final recommendation.\n\n## Final Chat Response\nAfter posting to Slack, reply with:\n\n\"✅ SprintReady AI completed QA refinement for <issue-key>. The report has been posted to #qa-refinement-copilot on Slack.\"\n\nThen a short summary:\n- Readiness status\n- Readiness score\n- Suggested QA points\n- Top 3 QA clarification questions"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -48,
+        -64
+      ],
+      "id": "3ac5c565-debf-4389-abbb-5f53f7eee2b2",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "qwen/qwen3.6-27b",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -688,
+        160
+      ],
+      "id": "c5552b97-9db5-49c7-ab98-4725e8d1a581",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "cz9Zz5x8UaZgeAlu",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        -48,
+        144
+      ],
+      "id": "937d4a2d-ac2c-4bd5-9eb6-d9b7aa0287f4",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "issueKey": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Issue_Key', ``, 'string') }}",
+        "simplifyOutput": true,
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.jiraTool",
+      "typeVersion": 1,
+      "position": [
+        112,
+        144
+      ],
+      "id": "e1a56903-8ced-406f-b549-72d3d6bd3870",
+      "name": "Get an issue in Jira Software",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "u0kKQlIZEsHwxduA",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "issueComment",
+        "issueKey": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Issue_Key', ``, 'string') }}",
+        "comment": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Comment', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.jiraTool",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        -64
+      ],
+      "id": "75a26efc-d97a-4316-a8f4-39c64402a7bf",
+      "name": "Add a comment in Jira Software",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "u0kKQlIZEsHwxduA",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0BH2PZKE30",
+          "mode": "list",
+          "cachedResultName": "qa-refinement-copilot"
+        },
+        "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message_Text', ``, 'string') }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slackTool",
+      "typeVersion": 2.5,
+      "position": [
+        288,
+        96
+      ],
+      "id": "cb8ec257-ca7c-4b74-ac88-818ceea95943",
+      "name": "Post Report in Slack",
+      "webhookId": "ae44fc98-a2a8-4ba0-8357-b9f0a94bad0e",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "xY3vcMQ8npRcUydn",
+          "name": "Slack account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -224,
+        128
+      ],
+      "id": "8c68d1c0-d930-45b7-aed6-062b6626a9fa",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        []
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get an issue in Jira Software": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add a comment in Jira Software": {
+      "ai_tool": [
+        []
+      ]
+    },
+    "Post Report in Slack": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "cd18328c-0051-4d3d-9593-1471f1ea764b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "709fb63ca4545b2af3641def8cb018d3c2a0d1e21fa77e00e29ee42b89593a29"
+  },
+  "nodeGroups": [],
+  "id": "leh39be23QGhqEbo",
+  "tags": []
+}
