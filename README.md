@@ -124,11 +124,57 @@ See `Slack Report - Ready Story.png` and `SlackReport - Not Ready Story.png` for
 
 ---
 
+## Evaluation
+
+Manual testing only proves an agent worked *that one time*. To actually trust the readiness scoring, this project includes a [Promptfoo](https://www.promptfoo.dev/) evaluation suite in [`eval_promptfoo/promptfooconfig.yaml`](./eval_promptfoo/promptfooconfig.yaml) that calls the live n8n webhook and checks the response against defined pass/fail criteria — a regression suite you rerun any time the system prompt changes.
+
+### Readiness scoring rubric
+
+Score bands are fixed in advance, not derived from any single output:
+
+| Score | Status | Meaning |
+|---|---|---|
+| 80–100 | Ready | Acceptance criteria are specific and cover the main flow plus edge cases |
+| 50–79 | Partially Ready | A basic flow exists, but important details are missing |
+| 20–49 | Not Ready | Only a high-level idea; acceptance criteria are vague or generic |
+| 0–19 | Not Ready | Little more than a title — no testable detail at all |
+
+### Test cases
+
+| # | Case | Checks |
+|---|---|---|
+| 1 | Well-defined story | Scores 80+, marked Ready |
+| 2 | Vague story | Score and status agree with each other (e.g. a 45 can't be labeled "Ready"), and must not land in the Ready band |
+| 3 | Invalid Jira issue key | No fabricated report is generated; agent explains it couldn't find the issue |
+| 4 | No issue key provided | Agent asks the user for one instead of guessing |
+| 5 | Same well-defined story, run twice | Gives a consistent verdict on repeat runs |
+| 6 | Extremely vague story (near-zero detail) | Scores below 50 — meaningfully lower than a "somewhat vague" story |
+
+### What the eval suite caught
+
+Two real issues surfaced that manual testing had missed:
+
+- **Run-to-run inconsistency (Case 5):** the same ticket returned different scores on different runs (40/100 vs. 60/100). Root cause: LLM outputs are probabilistic by default. Fixed by lowering the model's temperature setting to reduce randomness in scoring.
+- **Low scoring resolution at the vague end (Case 6):** a near-empty ticket scored identically to a moderately vague one — the agent wasn't discriminating between "missing some details" and "missing almost everything." Fixed in the system prompt, not the test, by adding the explicit scoring rubric above and instructing the agent not to default to a mid-range "safe" score for every vague ticket.
+
+### Running it
+
+```bash
+cd eval_promptfoo
+promptfoo cache clear
+promptfoo eval --no-cache
+promptfoo view
+```
+
+Before running, set your n8n Production webhook URL in `promptfooconfig.yaml`, and bump the `runTag` value at the top of the file before each fresh run — this guarantees new n8n memory sessions so the agent doesn't recall a "completed" session from a previous run.
+
+---
+
 ## Roadmap
 
 - [ ] Auto-trigger on Jira status change (e.g. "Ready for Refinement" column) instead of manual chat trigger
 - [ ] Optional short-summary comment back on the Jira ticket itself, linking to the full Slack report
-- [ ] Evaluation harness to track scoring consistency across a larger ticket sample
+- [x] Evaluation harness to track scoring consistency across a larger ticket sample
 
 ---
 
