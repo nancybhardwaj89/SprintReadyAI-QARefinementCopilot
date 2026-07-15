@@ -23,7 +23,7 @@ defaultTest:
 providers:
   - id: https
     config:
-      url: "https://testingnancy.app.n8n.cloud/webhook/91935939-8cf2-4c00-ab6d-49a40711a772/chat"
+      url: "URL"
       method: POST
       headers:
         Content-Type: application/json
