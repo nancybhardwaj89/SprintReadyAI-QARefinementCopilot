@@ -1,0 +1,158 @@
+# promptfooconfig.yaml
+#
+# HOW TO USE THIS FILE
+# 1. Replace YOUR_N8N_WEBHOOK_URL below with your real n8n Production webhook URL.
+# 2. Run:  promptfoo eval
+# 3. Then: promptfoo view      (opens a browser dashboard with pass/fail results)
+#
+# Every "test" below sends one message to your live agent (exactly like typing
+# in the n8n chat) and checks the response against rules you define ("assert").
+# This becomes your regression suite: rerun it any time you change the system
+# prompt to make sure you didn't break something that used to work.
+
+description: "SprintReady AI - QA Refinement Copilot evaluation"
+
+# Bump this value (e.g. run1 -> run2 -> run3) before each fresh `promptfoo eval`.
+# It feeds into every test's sessionId below, so bumping it guarantees brand-new
+# n8n memory sessions each time — otherwise the agent may recall a "completed"
+# session from a previous run and refuse to redo the refinement.
+defaultTest:
+  vars:
+    runTag: "run1"
+
+providers:
+  - id: https
+    config:
+      url: "https://testingnancy.app.n8n.cloud/webhook/91935939-8cf2-4c00-ab6d-49a40711a772/chat"
+      method: POST
+      headers:
+        Content-Type: application/json
+      body:
+        action: "sendMessage"
+        sessionId: "promptfoo-eval-{{ runTag }}-{{ caseId }}"
+        chatInput: "{{ prompt }}"
+      transformResponse: |
+        // n8n usually returns { "output": "..." } — adjust this if your
+        // response shape looks different when you check it manually.
+        json.output || json.text || json.message || json
+
+tests:
+  # ── Case 1: a well-defined story — expect Ready, high score ──────────
+  - description: "Well-defined story should be marked Ready with a high score"
+    vars:
+      prompt: "Refine story SCRUM-2"
+      caseId: "case1"
+    assert:
+      - type: contains
+        value: "SprintReady AI completed QA refinement"
+      - type: contains
+        value: "Readiness status: Ready"
+      - type: javascript
+        value: |
+          // Extracts the score from "Readiness score: 92 / 100" and checks it's 80+
+          const match = output.match(/Readiness score:\s*(\d{1,3})\s*\/\s*100/i);
+          if (!match) return false;
+          return parseInt(match[1], 10) >= 80;
+      - type: not-contains
+        value: "I cannot"
+
+  # ── Case 2: a vague story — score/status must be internally consistent
+  #           AND must not be fully "Ready" ─────────────────────────────
+  #
+  # Score bands are defined up front, independent of any single test run:
+  #   80-100 → Ready
+  #   50-79  → Partially Ready
+  #   0-49   → Not Ready
+  # This checks two separate things: (a) the agent's own score and status
+  # agree with each other, and (b) a vague ticket like this one must not
+  # land in the Ready band at all.
+  - description: "Vague story: score/status must be internally consistent, and must not be Ready"
+    vars:
+      prompt: "Refine story SCRUM-6"
+      caseId: "case2"
+    assert:
+      - type: javascript
+        value: |
+          const scoreMatch = output.match(/Readiness score:\s*(\d{1,3})\s*\/\s*100/i);
+          const statusMatch = output.match(/Readiness status:\s*(Ready|Partially Ready|Not Ready)/i);
+          if (!scoreMatch || !statusMatch) return false;
+
+          const score = parseInt(scoreMatch[1], 10);
+          const status = statusMatch[1].trim().toLowerCase();
+
+          const expectedBand =
+            score >= 80 ? 'ready' :
+            score >= 50 ? 'partially ready' :
+            'not ready';
+
+          // (a) score and status must agree with the predefined bands
+          if (status !== expectedBand) return false;
+
+          // (b) this specific ticket is genuinely vague — it must not be Ready
+          if (status === 'ready') return false;
+
+          return true;
+      - type: contains
+        value: "QA clarification questions"
+
+  # ── Case 3: invalid / non-existent issue key ──────────────────────────
+  - description: "Invalid issue key should not produce a fabricated report"
+    vars:
+      prompt: "Refine story FAKE-9999"
+      caseId: "case3"
+    assert:
+      - type: not-contains
+        value: "Readiness score:"
+      - type: icontains-any
+        value: ["could not find", "couldn't find", "could not be found", "does not exist", "unable to find", "not a valid", "please provide a valid"]
+
+  # ── Case 4: no issue key provided at all ──────────────────────────────
+  - description: "Message with no issue key should ask the user to provide one"
+    vars:
+      prompt: "Can you refine a story for me?"
+      caseId: "case4"
+    assert:
+      - type: icontains-any
+        value: ["provide", "issue key", "which story"]
+      - type: not-contains
+        value: "Readiness score:"
+
+  # ── Case 6: an extremely vague story — must land in the Not Ready band ─
+  # Create this ticket in Jira as SCRUM-8 (or update the key below to match):
+  #   Summary: Add notifications feature
+  #   Description: Users should get notified about important things happening
+  #                in the app. Add this to the mobile app.
+  #   Acceptance Criteria:
+  #     - Notifications work
+  #     - Users can see them
+  - description: "Extremely vague story should land in the Not Ready band (score < 50)"
+    vars:
+      prompt: "Refine story SCRUM-8"
+      caseId: "case6"
+    assert:
+      - type: javascript
+        value: |
+          const scoreMatch = output.match(/Readiness score:\s*(\d{1,3})\s*\/\s*100/i);
+          const statusMatch = output.match(/Readiness status:\s*(Ready|Partially Ready|Not Ready)/i);
+          if (!scoreMatch || !statusMatch) return false;
+          const score = parseInt(scoreMatch[1], 10);
+          const status = statusMatch[1].trim().toLowerCase();
+          return status === 'not ready' && score < 50;
+      - type: contains
+        value: "QA clarification questions"
+
+  # ── Case 5: repeat run for consistency — same ticket, same verdict ────
+  # Runs SCRUM-2 again to check the agent gives a stable answer, not a
+  # different score/status each time on identical input.
+  - description: "Same well-defined story should give a consistent Ready verdict on repeat runs"
+    vars:
+      prompt: "Refine story SCRUM-2"
+      caseId: "case5"
+    assert:
+      - type: contains
+        value: "Readiness status: Ready"
+      - type: javascript
+        value: |
+          const match = output.match(/Readiness score:\s*(\d{1,3})\s*\/\s*100/i);
+          if (!match) return false;
+          return parseInt(match[1], 10) >= 80;
